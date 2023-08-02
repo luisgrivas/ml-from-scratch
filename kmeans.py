@@ -33,7 +33,7 @@ def random_points(k: int, dimension: int, range: list) -> list:
 		> dimension (integer): the points' dimension.
 		> range (list): the range of each of points' coordinates.
 
-		function output:
+		output:
 		> a list with k elements. Each entry is an array with shape 1 x dimension.
 	"""
 
@@ -43,40 +43,95 @@ def random_points(k: int, dimension: int, range: list) -> list:
 	return random_points
 
 
-def elkan(X, number_of_clusters, centroids, distance):
-	distances = [distance(X, centroid) for centroid in centroids]
-	distances = np.array(distances)
-	clusters = np.argmin(distances, axis=0)
-	new_centroids = [np.mean(X[clusters == ind], axis=0) for ind in range(number_of_clusters)]
-	inertia = [distance(X[clusters == ind], centroid) for centroid in centroids]
-	return clusters, new_centroids
+def frobenius_norm(x1, x2):
+	"""Returns the Frobenius norm of the difference between x1 and x2.
+		input variables:
+		> x1,x2: numpy arrays with same shape.
+
+		output:
+		the frobenius norm of the diference between x1 and x2.
+	"""
+	x1 = np.array(x1)
+	x2 = np.array(x2)
+	abs_difference = np.abs(x1-x2)
+	frob = np.sqrt(np.sum(abs_difference**2))
+	return frob
+
+
+def random_dataset_points(X, k):
+	indices = random_integers(X.shape[0], k=k, replace=False)
+	return X[indices]
+
+
+def lloyd(X, centroids, distance, max_runs, epsilon):
+	"""Classical KMeans algorithm.
+
+		input variables
+		> X: the dataset (numpy array) with shape m x n, where m is the size
+		     of the dataset and n the number of featuras.
+	    > centroids: (numpy array) the initial centroids.
+	    > distance: the distance function to use in the algorithm. the standard is
+	                to use the euclidean distance.
+		> max_runs: (int) the number of iterations to run the algorithm
+		> epsilon:  (float) ...
+	"""
+	old_centroids = centroids
+	old_clusters = None
+	number_of_clusters = len(centroids)
+	
+	for __ in range(max_runs):
+		distances = np.array([distance(X, centroid) for centroid in centroids])
+		clusters = np.argmin(distances, axis=0)
+		new_centroids = [np.mean(X[clusters == ind], axis=0) for ind in range(number_of_clusters)]
+
+		if old_clusters is not None and np.array_equal(old_clusters, clusters):
+			break  # the assignmant hasn't change.
+
+		frob_norm = frobenius_norm(old_centroids, new_centroids)
+		if frob_norm < epsilon:
+			break
+
+		old_clusters = clusters
+	
+	partial_sum = [sum(distance(X[clusters == ind], centroid)) for ind, centroid in enumerate(centroids)]
+	inertia = sum(partial_sum)
+
+	return clusters, new_centroids, inertia
 
 
 class KMeans:
 	""" KMeans object."""
 	
-	def __init__(self, k=3, distance=euclidean_distance):
+	def __init__(self, k=3, n_iter=10, max_runs=300, epsilon=0.001, distance=euclidean_distance):
 		self.number_of_clusters = k
 		self.distance = distance
+		self.n_iter = n_iter
+		self.epsilon = epsilon
+		self.max_runs = max_runs
 		self.clusters = None
+		self.inertia = None
+		self.centroids = None
 
 
 	def fit(self, X):
-		number_of_points, dimension = X.shape
-		clusters = random_integers(self.number_of_clusters, number_of_points)
-		centroids = random_points(self.number_of_clusters, X.shape[1],
-			                      [np.min(X), np.max(X)])
-		i = 0
+		best_inertia = None
+		for __ in range(self.n_iter):
+			centroids = random_dataset_points(X, self.number_of_clusters)
+			centroids = [centroids[i] for i in range(self.number_of_clusters)]
+		
+			new_clusters, new_centroids, new_inertia = lloyd(X=X, centroids=centroids, distance=self.distance,
+						                                    max_runs=self.max_runs, epsilon=self.epsilon)
+				
+			if not best_inertia or (new_inertia < best_inertia):
+				best_inertia = new_inertia
+				best_clusters = new_clusters
+				best_centroids = new_centroids
+			
+		self.clusters = best_clusters
+		self.inertia = best_inertia
+		self.centroids = best_centroids
 
-		while i < 100:
-			distances = [self.distance(X, centroid) for centroid in centroids]
-			distances = np.array(distances)
-			clusters = np.argmin(distances, axis=0)
-			centroids = [np.mean(X[clusters == ind], axis=0) for ind in range(self.number_of_clusters)]
-			i+=1
-
-		self.clusters = clusters
-
-
-	def score():
-		return self.clusters
+	
+	def score(self):
+		print("Clusters: ", self.clusters)
+		print("Inertia: ", self.inertia)
